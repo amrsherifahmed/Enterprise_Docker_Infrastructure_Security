@@ -1,0 +1,28 @@
+# Secrets
+secrets/
+
+# Docker volumes data
+db_data/
+rabbitmq_data/
+
+# WAR files
+*.war
+
+# Build artifacts
+target/
+
+# Docker
+.docker/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log

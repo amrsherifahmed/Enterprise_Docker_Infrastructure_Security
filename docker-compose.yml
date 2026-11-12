@@ -1,0 +1,181 @@
+version: '3.8'
+
+services:
+
+  nginx:
+    build:
+      context: ./Nginx
+    container_name: vprofile-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - vprofile-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE  
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /var/run
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  app:
+    build:
+      context: ./App-Tomcat
+    container_name: vprofile-app
+    expose:
+      - "8080"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      memcached:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - vprofile-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 512M
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+    tmpfs:
+      - /tmp
+      - /usr/local/tomcat/work
+      - /usr/local/tomcat/logs
+      - /usr/local/tomcat/temp
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/login || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  mariadb:
+    image: mariadb:10.11
+    container_name: vprofile-db
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db-root-password
+      MYSQL_DATABASE: accounts
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./MariaDB/init.sql:/docker-entrypoint-initdb.d/db_backup.sql
+    expose:
+      - "3306"
+    restart: unless-stopped
+    networks:
+      - vprofile-net
+    secrets:
+      - db-root-password
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  memcached:
+    image: memcached:1.6-alpine
+    container_name: vprofile-cache
+    expose:
+      - "11211"
+    restart: unless-stopped
+    networks:
+      - vprofile-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    cap_drop:
+      - ALL
+    read_only: true
+    healthcheck:
+      test: ["CMD-SHELL", "echo stats | nc localhost 11211 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    container_name: vprofile-queue
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./RabbitMQ/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    expose:
+      - "5672"
+    restart: unless-stopped
+    networks:
+      - vprofile-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE  
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  db_data:
+  rabbitmq_data:
+
+networks:
+  vprofile-net:
+    driver: bridge
+    internal: false
+
+secrets:
+  db-root-password:
+    file: ./secrets/db-root-password.txt
