@@ -137,7 +137,7 @@ services:
       start_period: 10s
 
   rabbitmq:
-    image: rabbitmq:3.13-alpine
+    image: rabbitmq:4.0-alpine
     container_name: vprofile-queue
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
